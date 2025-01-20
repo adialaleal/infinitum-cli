@@ -1,11 +1,11 @@
-#!/usr/bin / env node
+#!/usr/bin/env node
 const { program } = require('commander');
 const { createProject } = require('../src/commands/create-project');
 const { initAssistant } = require('../src/commands/init-assistant');
 const { createFeature } = require('../src/commands/create-feature');
 
 program
-    .version('1.0.0')
+    .version('1.0.1')
     .description('CLI para projetos Flutter com Clean Architecture');
 
 program
