@@ -1,8 +1,8 @@
 {
   "name": "@adialaleal/infinitum-cli",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "CLI para criar projetos Flutter com Clean Architecture e assistente LLM",
-  "main": "index.js",
+  "main": "index.js", 
   "bin": {
     "infinitum": "./bin/infinitum.js"
   },
