@@ -30,6 +30,7 @@ class ChatServer {
                 try {
                     await this.handleMessage(message, socket);
                 } catch (error) {
+                    console.error(chalk.red('Erro:'), error);
                     socket.emit('error', error.message);
                 }
             });
@@ -42,6 +43,8 @@ class ChatServer {
     }
 
     async handleMessage(message, socket) {
+        console.log(chalk.cyan('\nMensagem recebida:'), message);
+        
         // Salvar mensagem do usuário
         this.messages.push({
             role: 'user',
@@ -55,6 +58,8 @@ class ChatServer {
                 apiKey: config.anthropic_key
             });
 
+            console.log(chalk.yellow('\nGerando resposta...'));
+
             const response = await anthropic.messages.create({
                 model: 'claude-3-opus-20240229',
                 max_tokens: 4000,
@@ -64,22 +69,45 @@ class ChatServer {
                 }]
             });
 
+            // Log token usage
+            const tokenUsage = {
+                input: response.usage?.input_tokens || 0,
+                output: response.usage?.output_tokens || 0,
+                total: (response.usage?.input_tokens || 0) + (response.usage?.output_tokens || 0)
+            };
+
+            console.log(chalk.blue('\nUso de tokens:'));
+            console.log(chalk.gray('- Input:'), tokenUsage.input);
+            console.log(chalk.gray('- Output:'), tokenUsage.output);
+            console.log(chalk.gray('- Total:'), tokenUsage.total);
+
+            // Enviar uso de tokens para o cliente
+            socket.emit('token usage', tokenUsage);
+
             // Salvar resposta do assistente
-            this.messages.push({
+            const assistantMessage = {
                 role: 'assistant',
                 content: response.content,
-                timestamp: new Date().toISOString()
-            });
+                timestamp: new Date().toISOString(),
+                token_usage: tokenUsage
+            };
+
+            this.messages.push(assistantMessage);
 
             // Extrair e salvar diffs se houver
             const diffs = this.extractDiffs(response.content);
             if (diffs.length > 0) {
+                console.log(chalk.magenta('\nDiffs encontrados:'), diffs.length);
                 await this.saveDiffs(diffs);
             }
 
+            // Enviar resposta para o cliente
             socket.emit('chat response', response.content);
 
+            console.log(chalk.green('\nResposta enviada com sucesso!'));
+
         } catch (error) {
+            console.error(chalk.red('\nErro ao gerar resposta:'), error);
             socket.emit('error', error.message);
         }
     }
