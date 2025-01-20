@@ -1,6 +1,7 @@
 const fs = require('fs-extra');
 const path = require('path');
 const inquirer = require('inquirer');
+const chalk = require('chalk');
 
 async function initAssistant() {
     // Verificar se está em um projeto válido
@@ -34,3 +35,5 @@ async function initAssistant() {
 
     console.log(chalk.green('✓ Assistente inicializado com sucesso!'));
 }
+
+module.exports = { initAssistant };
