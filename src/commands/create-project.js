@@ -8,11 +8,20 @@ const inquirer = require('inquirer');
 inquirer.registerPrompt('editor-cmd-enter', require('../prompts/editor-cmd-enter'));
 
 async function createCorePackage(projectDir, packageName, template) {
-    const packageDir = path.join(projectDir, 'core_packages', packageName);
+    const corePackagesDir = path.join(projectDir, 'core_packages');
+    const packageDir = path.join(corePackagesDir, packageName);
+    
+    // Criar diretório core_packages se não existir
+    await fs.mkdirp(corePackagesDir);
     
     // Criar package Flutter
-    process.chdir(path.join(projectDir, 'core_packages'));
-    execSync(`flutter create --template=package ${packageName}`);
+    const currentDir = process.cwd();
+    try {
+        process.chdir(corePackagesDir);
+        execSync(`flutter create --template=package ${packageName}`);
+    } finally {
+        process.chdir(currentDir);
+    }
 
     // Copiar template se existir
     if (template) {
@@ -44,8 +53,13 @@ async function setupMainApp(projectDir, projectName) {
     const mainAppDir = path.join(projectDir, 'main_app');
     
     // Criar Flutter app
-    process.chdir(projectDir);
-    execSync(`flutter create --org com.${projectName} main_app`);
+    const currentDir = process.cwd();
+    try {
+        process.chdir(projectDir);
+        execSync(`flutter create --org com.${projectName} main_app`);
+    } finally {
+        process.chdir(currentDir);
+    }
 
     // Copiar templates
     const templatesDir = path.join(__dirname, '../templates/main_app/lib');
