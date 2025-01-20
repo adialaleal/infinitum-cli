@@ -1,106 +1,54 @@
-const blessed = require('blessed');
-const { Anthropic } = require('@anthropic-ai/sdk');
-const fs = require('fs-extra');
+const express = require('express');
+const { Server } = require('socket.io');
+const http = require('http');
 const path = require('path');
-const { createDiff } = require('diff');
+const fs = require('fs-extra');
+const { Anthropic } = require('@anthropic-ai/sdk');
+const open = require('open');
 const chalk = require('chalk');
 
-class ChatUI {
+class ChatServer {
     constructor() {
-        this.screen = blessed.screen({
-            smartCSR: true,
-            title: 'Infinitum Chat'
-        });
-
-        // Chat history container
-        this.chatBox = blessed.box({
-            top: 0,
-            left: 0,
-            width: '100%',
-            height: '90%',
-            scrollable: true,
-            alwaysScroll: true,
-            tags: true,
-            style: {
-                fg: 'white'
-            }
-        });
-
-        // Input box
-        this.inputBox = blessed.textarea({
-            bottom: 0,
-            left: 0,
-            width: '100%',
-            height: '10%',
-            inputOnFocus: true,
-            padding: {
-                top: 1,
-                left: 2
-            },
-            style: {
-                fg: 'white',
-                bg: 'blue'
-            }
-        });
-
-        // Status line
-        this.statusLine = blessed.line({
-            bottom: '10%',
-            left: 0,
-            width: '100%',
-            orientation: 'horizontal',
-            type: 'line',
-            fg: 'blue'
-        });
-
-        // Add components to screen
-        this.screen.append(this.chatBox);
-        this.screen.append(this.inputBox);
-        this.screen.append(this.statusLine);
-
+        this.app = express();
+        this.server = http.createServer(this.app);
+        this.io = new Server(this.server);
+        
+        this.setupExpress();
+        this.setupWebSocket();
         this.messages = [];
-        this.setupHandlers();
     }
 
-    setupHandlers() {
-        // Quit on Ctrl-C or q
-        this.screen.key(['C-c', 'q'], () => {
-            this.saveChat();
-            return process.exit(0);
+    setupExpress() {
+        this.app.use(express.static(path.join(__dirname, '../web/public')));
+    }
+
+    setupWebSocket() {
+        this.io.on('connection', (socket) => {
+            console.log(chalk.green('Cliente conectado'));
+
+            socket.on('chat message', async (message) => {
+                try {
+                    await this.handleMessage(message, socket);
+                } catch (error) {
+                    socket.emit('error', error.message);
+                }
+            });
+
+            socket.on('disconnect', () => {
+                console.log(chalk.yellow('Cliente desconectado'));
+                this.saveChat();
+            });
+        });
+    }
+
+    async handleMessage(message, socket) {
+        // Salvar mensagem do usuário
+        this.messages.push({
+            role: 'user',
+            content: message,
+            timestamp: new Date().toISOString()
         });
 
-        // Submit on Cmd-Enter or Ctrl-Enter
-        this.inputBox.key(['C-enter'], () => this.handleSubmit());
-        this.screen.key(['C-enter'], () => this.handleSubmit());
-
-        // Focus input by default
-        this.inputBox.focus();
-    }
-
-    async handleSubmit() {
-        const message = this.inputBox.getValue();
-        if (!message.trim()) return;
-
-        // Add user message to chat
-        this.addMessage('user', message);
-        this.inputBox.clearValue();
-        this.screen.render();
-
-        // Get AI response
-        await this.getAIResponse(message);
-    }
-
-    addMessage(role, content) {
-        const timestamp = new Date().toISOString();
-        this.messages.push({ role, content, timestamp });
-
-        const prefix = role === 'user' ? '{green-fg}You:{/green-fg}' : '{blue-fg}Assistant:{/blue-fg}';
-        this.chatBox.pushLine(`${prefix} ${content}`);
-        this.chatBox.setScrollPerc(100);
-        this.screen.render();
-    }
-
-    async getAIResponse(userMessage) {
         try {
             const config = await fs.readJSON('.infinitum/config.json');
             const anthropic = new Anthropic({
@@ -112,23 +60,27 @@ class ChatUI {
                 max_tokens: 4000,
                 messages: [{
                     role: 'user',
-                    content: `${userMessage}\n\nPor favor, ao fazer modificações em arquivos:\n1. Mostre apenas o nome do arquivo e o diff das mudanças\n2. Use o formato de diff do git\n3. Seja conciso nas explicações`
+                    content: `${message}\n\nPor favor, ao fazer modificações em arquivos:\n1. Mostre apenas o nome do arquivo e o diff das mudanças\n2. Use o formato de diff do git\n3. Seja conciso nas explicações`
                 }]
             });
 
-            // Extract file changes from response
-            const diffs = this.extractDiffs(response.content);
-            
-            // Add response to chat
-            this.addMessage('assistant', response.content);
+            // Salvar resposta do assistente
+            this.messages.push({
+                role: 'assistant',
+                content: response.content,
+                timestamp: new Date().toISOString()
+            });
 
-            // Save diffs if any
+            // Extrair e salvar diffs se houver
+            const diffs = this.extractDiffs(response.content);
             if (diffs.length > 0) {
                 await this.saveDiffs(diffs);
             }
 
+            socket.emit('chat response', response.content);
+
         } catch (error) {
-            this.addMessage('assistant', `Error: ${error.message}`);
+            socket.emit('error', error.message);
         }
     }
 
@@ -157,6 +109,8 @@ class ChatUI {
     }
 
     async saveChat() {
+        if (this.messages.length === 0) return;
+
         const timestamp = new Date().toISOString();
         const chatsDir = path.join(process.env.HOME, '.infinitum', 'chats');
         await fs.mkdirp(chatsDir);
@@ -167,6 +121,20 @@ class ChatUI {
             messages: this.messages
         }, { spaces: 2 });
     }
+
+    start(port = 3000) {
+        this.server.listen(port, () => {
+            console.log(chalk.blue(`\nInfinitum Chat iniciado em http://localhost:${port}`));
+            console.log(chalk.gray('Pressione Ctrl+C para encerrar\n'));
+            open(`http://localhost:${port}`);
+        });
+
+        process.on('SIGINT', async () => {
+            console.log(chalk.yellow('\nEncerrando chat...'));
+            await this.saveChat();
+            process.exit(0);
+        });
+    }
 }
 
 async function startChat() {
@@ -176,8 +144,8 @@ async function startChat() {
         process.exit(1);
     }
 
-    const ui = new ChatUI();
-    ui.addMessage('assistant', 'Olá! Como posso ajudar com seu projeto Flutter hoje?');
+    const server = new ChatServer();
+    server.start();
 }
 
 module.exports = { startChat };

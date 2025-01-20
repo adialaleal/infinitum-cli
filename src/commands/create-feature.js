@@ -48,6 +48,12 @@ async function updateFeatureYaml(featureName, description) {
 }
 
 async function createFeature(featureName) {
+    // Verificar se está em um projeto válido
+    if (!fs.existsSync('.infinitum/config.json')) {
+        console.error(chalk.red('Erro: Execute este comando na raiz de um projeto Infinitum'));
+        process.exit(1);
+    }
+
     console.log(chalk.blue('\nDescreva sua funcionalidade (Use Command + Enter para enviar):\n'));
     
     const { description } = await inquirer.prompt([
@@ -134,7 +140,6 @@ async function createFeature(featureName) {
         timestamp: new Date().toISOString(),
         action: `Created feature: ${featureName}`,
         description,
-        files_analyzed: files.length,
         files_created: createdFiles
     });
 
@@ -145,4 +150,4 @@ async function createFeature(featureName) {
     createdFiles.forEach(file => console.log(chalk.cyan(`- ${file}`)));
 }
 
-module.exports = createFeature;
+module.exports = { createFeature };
